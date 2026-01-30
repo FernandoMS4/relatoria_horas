@@ -1,5 +1,6 @@
 import sys
 import os
+from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "modules"))
 
@@ -315,6 +316,218 @@ def render_atualizacao():
             st.error(f"Erro ao ler CSV: {e}")
 
 
+def _fmt(value: float) -> str:
+    """Formata número no padrão brasileiro: 1.234,5"""
+    inteiro = int(value)
+    decimal = f"{value:.1f}".split(".")[1]
+    parte_inteira = f"{inteiro:,}".replace(",", ".")
+    return f"{parte_inteira},{decimal}"
+
+
+def _bar_row(label: str, horas: float, max_horas: float) -> str:
+    pct = (horas / max_horas * 100) if max_horas > 0 else 0
+    return (
+        f"<tr>"
+        f'<td>{label}</td>'
+        f'<td class="text-right">{_fmt(horas)}</td>'
+        f'<td><div class="bar-cell">'
+        f'<div class="bar-track"><div class="bar-fill" style="width:{pct:.0f}%"></div></div>'
+        f'<span class="bar-value">{pct:.0f}%</span>'
+        f'</div></td></tr>'
+    )
+
+
+def gerar_relatorio_html(df: pd.DataFrame) -> str:
+    """Gera HTML do relatório com dados reais."""
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    periodos = sorted(df["MES_ANO"].dropna().unique(), key=lambda x: (x.split("/")[1], x.split("/")[0]))
+    periodo_str = f"{periodos[0]} – {periodos[-1]}" if periodos else "–"
+
+    total_registros = len(df)
+    horas_totais = df["HORAS_EM_MINUTOS"].sum()
+    n_profissionais = df["PROFISSIONAL"].nunique()
+
+    # Horas por profissional
+    h_prof = df.groupby("PROFISSIONAL")["HORAS_EM_MINUTOS"].sum().sort_values(ascending=False)
+    max_prof = h_prof.max() if len(h_prof) > 0 else 1
+    rows_prof = "".join(_bar_row(nome, horas, max_prof) for nome, horas in h_prof.items())
+    total_prof = h_prof.sum()
+
+    # Horas por cliente
+    h_cli = df.groupby("CLIENTE_CONCATENADO")["HORAS_EM_MINUTOS"].sum().sort_values(ascending=False)
+    max_cli = h_cli.max() if len(h_cli) > 0 else 1
+    rows_cli = "".join(_bar_row(nome, horas, max_cli) for nome, horas in h_cli.items())
+    total_cli = h_cli.sum()
+
+    # Alocação vs Realizado
+    secao_alocacao = ""
+    kpi_restantes = ""
+    if alocacao_exists():
+        df_aloc = load_alocacao()
+        df_aloc["HORAS_ALOCADAS"] = (df_aloc["MES_ATUAL"] / 100) * df_aloc["HORAS_MES"]
+        df_aloc["CONCAT_KEY"] = df_aloc["PROFISSIONAL"] + df_aloc["CLIENTE"]
+
+        horas_gastas = df.copy()
+        horas_gastas["CONCAT_KEY"] = horas_gastas["PROFISSIONAL"] + horas_gastas["CLIENTE_CONCATENADO"]
+        horas_gastas = (
+            horas_gastas.groupby("CONCAT_KEY")["HORAS_EM_MINUTOS"]
+            .sum().reset_index().rename(columns={"HORAS_EM_MINUTOS": "HORAS_GASTAS"})
+        )
+        comp = df_aloc.merge(horas_gastas, on="CONCAT_KEY", how="left")
+        comp["HORAS_GASTAS"] = comp["HORAS_GASTAS"].fillna(0).round(1)
+        comp["HORAS_RESTANTES"] = (comp["HORAS_ALOCADAS"] - comp["HORAS_GASTAS"]).round(1)
+
+        total_restantes = comp["HORAS_RESTANTES"].sum()
+        kpi_restantes = f'''
+    <div class="kpi accent-danger">
+      <div class="label">Horas Restantes (Alocação)</div>
+      <div class="value">{_fmt(total_restantes)}h</div>
+    </div>'''
+
+        rows_aloc = ""
+        for _, r in comp.iterrows():
+            pct_usado = (r["HORAS_GASTAS"] / r["HORAS_ALOCADAS"] * 100) if r["HORAS_ALOCADAS"] > 0 else 0
+            if pct_usado > 100:
+                status_cls, status_txt = "status-over", "Excedido"
+            elif pct_usado >= 90:
+                status_cls, status_txt = "status-warn", "Atenção"
+            else:
+                status_cls, status_txt = "status-ok", "No prazo"
+            rows_aloc += (
+                f'<tr><td>{r["PROFISSIONAL"]}</td><td>{r["CLIENTE"]}</td>'
+                f'<td class="text-right">{_fmt(r["HORAS_ALOCADAS"])}</td>'
+                f'<td class="text-right">{_fmt(r["HORAS_GASTAS"])}</td>'
+                f'<td class="text-right">{_fmt(r["HORAS_RESTANTES"])}</td>'
+                f'<td class="{status_cls}">{status_txt}</td></tr>'
+            )
+        secao_alocacao = f'''
+  <section>
+    <h2>Alocação vs Realizado</h2>
+    <table>
+      <thead><tr><th>Profissional</th><th>Cliente</th><th>Alocadas</th><th>Gastas</th><th>Restantes</th><th>Status</th></tr></thead>
+      <tbody>{rows_aloc}</tbody>
+    </table>
+  </section>'''
+
+    TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
+    with open(os.path.join(TEMPLATE_DIR, "relatorio.html"), encoding="utf-8") as f:
+        css = f.read().split("<style>")[1].split("</style>")[0]
+
+    return f'''<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório – Controle de Horas</title>
+  <style>{css}</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1>Controle de Horas</h1>
+      <span style="color: var(--text-muted); font-size: 0.9rem;">Relatório de acompanhamento</span>
+    </div>
+    <div class="meta">
+      <div>Período: <strong>{periodo_str}</strong></div>
+      <div>Gerado em: <strong>{hoje}</strong></div>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="label">Total de Registros</div>
+      <div class="value">{total_registros:,}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Horas Totais</div>
+      <div class="value">{_fmt(horas_totais)}h</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Profissionais</div>
+      <div class="value">{n_profissionais}</div>
+    </div>
+    {kpi_restantes}
+  </div>
+
+  <section>
+    <h2>Horas por Profissional</h2>
+    <table>
+      <thead><tr><th>Profissional</th><th>Horas</th><th style="width:40%">Distribuição</th></tr></thead>
+      <tbody>{rows_prof}</tbody>
+      <tfoot><tr><td>Total</td><td class="text-right">{_fmt(total_prof)}</td><td></td></tr></tfoot>
+    </table>
+  </section>
+
+  <section>
+    <h2>Horas por Cliente</h2>
+    <table>
+      <thead><tr><th>Cliente</th><th>Horas</th><th style="width:40%">Distribuição</th></tr></thead>
+      <tbody>{rows_cli}</tbody>
+      <tfoot><tr><td>Total</td><td class="text-right">{_fmt(total_cli)}</td><td></td></tr></tfoot>
+    </table>
+  </section>
+
+  {secao_alocacao}
+
+  <footer>
+    Controle de Horas &middot; Relatório gerado automaticamente &middot; Golden Bagres ©
+  </footer>
+</div>
+</body>
+</html>'''
+
+
+def render_relatorio():
+    """Renderiza a aba de geração de relatório HTML."""
+    df = load_data()
+    if df is None:
+        st.warning("Nenhum dado disponível. Carregue os dados primeiro na aba **Atualização de Dados**.")
+        return
+
+    st.subheader("Gerar Relatório HTML")
+
+    # --- Filtros ---
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        periodos = sorted(
+            df["MES_ANO"].dropna().unique(),
+            key=lambda x: (x.split("/")[1], x.split("/")[0]),
+        )
+        sel_periodo = st.multiselect(
+            "Período (Mês/Ano)",
+            periodos,
+            default=periodos,
+            key="relatorio_periodo",
+        )
+    with col_f2:
+        profissionais = sorted(df["PROFISSIONAL"].dropna().unique())
+        sel_profissional = st.multiselect(
+            "Profissional",
+            profissionais,
+            default=profissionais,
+            key="relatorio_profissional",
+        )
+    filtered = df[df["MES_ANO"].isin(sel_periodo) & df["PROFISSIONAL"].isin(sel_profissional)]
+    st.caption(f"**{len(filtered)}** registros com os filtros selecionados.")
+
+    if st.button("Gerar relatório", type="primary"):
+        html = gerar_relatorio_html(filtered)
+        st.session_state["relatorio_html"] = html
+
+    if "relatorio_html" in st.session_state:
+        html = st.session_state["relatorio_html"]
+        st.download_button(
+            label="Baixar relatório HTML",
+            data=html,
+            file_name=f"relatorio_horas_{datetime.now().strftime('%Y%m%d')}.html",
+            mime="text/html",
+        )
+        st.divider()
+        st.caption("Preview do relatório:")
+        st.components.v1.html(html, height=800, scrolling=True)
+
+
 def render_explorador():
     """Renderiza a aba do explorador de dados do DuckDB."""
     tables = list_tables()
@@ -380,8 +593,8 @@ def main():
     st.set_page_config(page_title="Controle de Horas", layout="wide")
     st.title("Controle de Horas")
 
-    tab_painel, tab_atualizar, tab_explorador = st.tabs(
-        ["Painel", "Atualização de Dados", "Explorador de Dados"]
+    tab_painel, tab_atualizar, tab_explorador, tab_relatorio = st.tabs(
+        ["Painel", "Atualização de Dados", "Explorador de Dados", "Relatório"]
     )
 
     with tab_atualizar:
@@ -396,6 +609,9 @@ def main():
 
     with tab_explorador:
         render_explorador()
+
+    with tab_relatorio:
+        render_relatorio()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório – Controle de Horas</title>
+  <style>
+    :root {
+      --primary: #1a1a2e;
+      --accent: #4c78a8;
+      --accent-light: #6b9bd2;
+      --danger: #e45756;
+      --bg: #f4f6f9;
+      --card-bg: #ffffff;
+      --text: #2c2c2c;
+      --text-muted: #6b7280;
+      --border: #e2e5ea;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 3px solid var(--primary);
+      padding-bottom: 16px;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      color: var(--primary);
+      font-weight: 700;
+    }
+    header .meta {
+      text-align: right;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    header .meta strong { color: var(--text); }
+
+    /* KPI cards */
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi {
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 20px 24px;
+      border-left: 4px solid var(--accent);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .kpi .label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .kpi .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .kpi.accent-danger { border-left-color: var(--danger); }
+
+    /* Section */
+    section {
+      margin-bottom: 32px;
+    }
+    section h2 {
+      font-size: 1.15rem;
+      color: var(--primary);
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      font-size: 0.88rem;
+    }
+    thead { background: var(--primary); color: #fff; }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    td { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #f0f4fa; }
+    .text-right { text-align: right; }
+
+    /* Footer row for totals */
+    tfoot td {
+      padding: 10px 14px;
+      font-weight: 700;
+      background: #edf1f7;
+      border-top: 2px solid var(--accent);
+    }
+
+    /* Bar (inline mini-chart) */
+    .bar-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bar-track {
+      flex: 1;
+      height: 10px;
+      background: #e8ecf1;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      background: var(--accent);
+      transition: width 0.3s;
+    }
+    .bar-value { font-size: 0.8rem; min-width: 48px; text-align: right; }
+
+    /* Allocation status */
+    .status-ok { color: #22c55e; font-weight: 600; }
+    .status-warn { color: #f59e0b; font-weight: 600; }
+    .status-over { color: var(--danger); font-weight: 600; }
+
+    /* Print */
+    @media print {
+      body { background: #fff; }
+      .page { padding: 20px 0; }
+      .kpi, table { box-shadow: none; border: 1px solid var(--border); }
+      header { border-bottom-width: 2px; }
+      tbody tr:hover { background: none; }
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div>
+      <h1>Controle de Horas</h1>
+      <span style="color: var(--text-muted); font-size: 0.9rem;">Relatório de acompanhamento</span>
+    </div>
+    <div class="meta">
+      <div>Período: <strong>01/2025 – 01/2026</strong></div>
+      <div>Gerado em: <strong>30/01/2026</strong></div>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="label">Total de Registros</div>
+      <div class="value">1.240</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Horas Totais</div>
+      <div class="value">3.450,5h</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Profissionais</div>
+      <div class="value">8</div>
+    </div>
+    <div class="kpi accent-danger">
+      <div class="label">Horas Restantes (Alocação)</div>
+      <div class="value">620,0h</div>
+    </div>
+  </div>
+
+  <!-- Horas por Profissional -->
+  <section>
+    <h2>Horas por Profissional</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Profissional</th>
+          <th>Horas</th>
+          <th style="width: 40%;">Distribuição</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Fernando</td>
+          <td class="text-right">680,2</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:85%"></div></div>
+              <span class="bar-value">85%</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Ana</td>
+          <td class="text-right">540,0</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:68%"></div></div>
+              <span class="bar-value">68%</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Carlos</td>
+          <td class="text-right">420,3</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:53%"></div></div>
+              <span class="bar-value">53%</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Total</td>
+          <td class="text-right">1.640,5</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+
+  <!-- Horas por Cliente -->
+  <section>
+    <h2>Horas por Cliente</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Horas</th>
+          <th style="width: 40%;">Distribuição</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cliente Alpha</td>
+          <td class="text-right">1.200,0</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:78%"></div></div>
+              <span class="bar-value">78%</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Cliente Beta</td>
+          <td class="text-right">850,5</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:55%"></div></div>
+              <span class="bar-value">55%</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Cliente Gamma</td>
+          <td class="text-right">400,0</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:26%"></div></div>
+              <span class="bar-value">26%</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Total</td>
+          <td class="text-right">2.450,5</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+
+  <!-- Alocação vs Realizado -->
+  <section>
+    <h2>Alocação vs Realizado</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Profissional</th>
+          <th>Cliente</th>
+          <th>Alocadas</th>
+          <th>Gastas</th>
+          <th>Restantes</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Fernando</td>
+          <td>Cliente Alpha</td>
+          <td class="text-right">200,0</td>
+          <td class="text-right">185,3</td>
+          <td class="text-right">14,7</td>
+          <td class="status-ok">No prazo</td>
+        </tr>
+        <tr>
+          <td>Ana</td>
+          <td>Cliente Beta</td>
+          <td class="text-right">160,0</td>
+          <td class="text-right">155,0</td>
+          <td class="text-right">5,0</td>
+          <td class="status-warn">Atenção</td>
+        </tr>
+        <tr>
+          <td>Carlos</td>
+          <td>Cliente Gamma</td>
+          <td class="text-right">120,0</td>
+          <td class="text-right">132,4</td>
+          <td class="text-right">0,0</td>
+          <td class="status-over">Excedido</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    Controle de Horas &middot; Relatório gerado automaticamente &middot; Golden Bagres
+  </footer>
+
+</div>
+</body>
+</html>
