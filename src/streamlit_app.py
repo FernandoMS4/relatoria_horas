@@ -10,6 +10,7 @@ from modules.gs_integrations import GSGoldenBagres
 from modules.data_store import (
     table_exists, save_dataframe, load_dataframe, get_last_update,
     alocacao_exists, save_alocacao, load_alocacao,
+    list_tables, load_table,
 )
 
 SHEET_ID = "1ej9meDW8js9sPvqylB9eNbNLp3-phJlb7UE8j_BPvFk"
@@ -26,8 +27,8 @@ def fetch_and_store() -> pd.DataFrame:
         .astype(str)
         .str.replace(",", ".", regex=False)
     )
-    df["HORAS_EM_MINUTOS"] = pd.to_numeric(df["HORAS_EM_MINUTOS"], errors="coerce").fillna(0).round(3)
-    df["MINUTO"] = pd.to_numeric(df["MINUTO"], errors="coerce").fillna(0).round(3)
+    df["HORAS_EM_MINUTOS"] = pd.to_numeric(df["HORAS_EM_MINUTOS"], errors="coerce").fillna(0).round(1)
+    df["MINUTO"] = pd.to_numeric(df["MINUTO"], errors="coerce").fillna(0).round(1)
     df["MES"] = df["MES"].astype(str).str.strip()
     df["ANO"] = df["ANO"].astype(str).str.strip()
     df["MES_ANO"] = df["MES"].str.zfill(2) + "/" + df["ANO"]
@@ -46,7 +47,7 @@ def load_data() -> pd.DataFrame | None:
 def bar_chart_with_labels(data, x_col, y_col, horizontal=False):
     """Cria gráfico de barras Altair com valores visíveis nas barras."""
     data = data.copy()
-    data[y_col] = data[y_col].round(3)
+    data[y_col] = data[y_col].round(1)
 
     if horizontal:
         bars = alt.Chart(data).mark_bar().encode(
@@ -54,9 +55,9 @@ def bar_chart_with_labels(data, x_col, y_col, horizontal=False):
             y=alt.Y(f"{x_col}:N", sort="-x", title=None),
         )
         text = bars.mark_text(
-            align="right", dx=-6, fontSize=14, fontWeight="bold", color="white"
+            align="right", fontSize=14, fontWeight="bold", color="white"
         ).encode(
-            text=alt.Text(f"{y_col}:Q", format=".3f"),
+            text=alt.Text(f"{y_col}:Q", format=".1f"),
         )
     else:
         bars = alt.Chart(data).mark_bar().encode(
@@ -66,7 +67,7 @@ def bar_chart_with_labels(data, x_col, y_col, horizontal=False):
         text = bars.mark_text(
             baseline="top", dy=6, fontSize=14, fontWeight="bold", color="white"
         ).encode(
-            text=alt.Text(f"{y_col}:Q", format=".3f"),
+            text=alt.Text(f"{y_col}:Q", format=".1f"),
         )
 
     return (bars + text).properties(height=350)
@@ -76,7 +77,7 @@ def stacked_bar_chart(data, index_col, columns_col, value_col):
     """Cria gráfico de barras empilhadas com valores visíveis."""
     melted = data.reset_index().melt(id_vars=index_col, var_name=columns_col, value_name=value_col)
     melted = melted[melted[value_col] > 0]
-    melted[value_col] = melted[value_col].round(3)
+    melted[value_col] = melted[value_col].round(1)
 
     bars = alt.Chart(melted).mark_bar().encode(
         x=alt.X(f"{index_col}:N", title=None),
@@ -88,7 +89,7 @@ def stacked_bar_chart(data, index_col, columns_col, value_col):
     ).encode(
         x=alt.X(f"{index_col}:N"),
         y=alt.Y(f"{value_col}:Q", stack="zero"),
-        text=alt.Text(f"{value_col}:Q", format=".3f"),
+        text=alt.Text(f"{value_col}:Q", format=".1f"),
     )
 
     return (bars + text).properties(height=400)
@@ -165,7 +166,7 @@ def render_painel(df: pd.DataFrame):
         text = bars.mark_text(
             baseline="top", dy=6, fontSize=14, fontWeight="bold", color="white"
         ).encode(
-            text=alt.Text("HORAS_EM_MINUTOS:Q", format=".3f"),
+            text=alt.Text("HORAS_EM_MINUTOS:Q", format=".1f"),
         )
         st.altair_chart((bars + text).properties(height=350), width="stretch")
 
@@ -220,8 +221,8 @@ def render_painel(df: pd.DataFrame):
             on="CONCAT_KEY",
             how="left",
         )
-        comparativo["HORAS_GASTAS"] = comparativo["HORAS_GASTAS"].fillna(0).round(3)
-        comparativo["HORAS_RESTANTES"] = (comparativo["HORAS_ALOCADAS"] - comparativo["HORAS_GASTAS"]).round(3)
+        comparativo["HORAS_GASTAS"] = comparativo["HORAS_GASTAS"].fillna(0).round(1)
+        comparativo["HORAS_RESTANTES"] = (comparativo["HORAS_ALOCADAS"] - comparativo["HORAS_GASTAS"]).round(1)
         comparativo["HORAS_RESTANTES"] = comparativo["HORAS_RESTANTES"].clip(lower=0)
         comparativo["LABEL"] = comparativo["PROFISSIONAL"] + " / " + comparativo["CLIENTE"]
 
@@ -229,7 +230,7 @@ def render_painel(df: pd.DataFrame):
         chart_data = comparativo[["LABEL", "HORAS_GASTAS", "HORAS_RESTANTES"]].melt(
             id_vars="LABEL", var_name="STATUS", value_name="HORAS"
         )
-        chart_data["HORAS"] = chart_data["HORAS"].round(3)
+        chart_data["HORAS"] = chart_data["HORAS"].round(1)
         chart_data["STATUS"] = chart_data["STATUS"].replace({
             "HORAS_GASTAS": "Gastas",
             "HORAS_RESTANTES": "Restantes",
@@ -314,11 +315,74 @@ def render_atualizacao():
             st.error(f"Erro ao ler CSV: {e}")
 
 
+def render_explorador():
+    """Renderiza a aba do explorador de dados do DuckDB."""
+    tables = list_tables()
+
+    if not tables:
+        st.warning("Nenhuma tabela encontrada no banco de dados.")
+        return
+
+    selected_table = st.selectbox("Selecione uma tabela", tables)
+
+    if selected_table:
+        df = load_table(selected_table)
+
+        st.caption(f"**{len(df)}** registros | **{len(df.columns)}** colunas")
+
+        # --- Filtros por coluna ---
+        with st.expander("Filtros", expanded=False):
+            filters = {}
+            filter_cols = st.multiselect(
+                "Colunas para filtrar",
+                df.columns.tolist(),
+            )
+            for col in filter_cols:
+                if df[col].dtype in ("object", "string"):
+                    unique_vals = sorted(df[col].dropna().unique().tolist())
+                    selected = st.multiselect(
+                        f"{col}",
+                        unique_vals,
+                        default=unique_vals,
+                        key=f"filter_{col}",
+                    )
+                    filters[col] = selected
+                else:
+                    col_min = float(df[col].min())
+                    col_max = float(df[col].max())
+                    if col_min == col_max:
+                        st.text(f"{col}: valor único = {col_min}")
+                    else:
+                        vmin, vmax = st.slider(
+                            f"{col}",
+                            min_value=col_min,
+                            max_value=col_max,
+                            value=(col_min, col_max),
+                            key=f"filter_{col}",
+                        )
+                        filters[col] = (vmin, vmax)
+
+            # Aplicar filtros
+            mask = pd.Series(True, index=df.index)
+            for col, val in filters.items():
+                if isinstance(val, list):
+                    mask &= df[col].isin(val)
+                else:
+                    vmin, vmax = val
+                    mask &= df[col].between(vmin, vmax)
+            df = df[mask]
+
+        st.caption(f"Exibindo **{len(df)}** registros após filtros")
+        st.dataframe(df, use_container_width=True)
+
+
 def main():
     st.set_page_config(page_title="Controle de Horas", layout="wide")
     st.title("Controle de Horas")
 
-    tab_painel, tab_atualizar = st.tabs(["Painel", "Atualização de Dados"])
+    tab_painel, tab_atualizar, tab_explorador = st.tabs(
+        ["Painel", "Atualização de Dados", "Explorador de Dados"]
+    )
 
     with tab_atualizar:
         render_atualizacao()
@@ -329,6 +393,9 @@ def main():
             st.warning("Nenhum dado disponível. Vá na aba **Atualização de Dados** para carregar.")
         else:
             render_painel(df)
+
+    with tab_explorador:
+        render_explorador()
 
 
 if __name__ == "__main__":

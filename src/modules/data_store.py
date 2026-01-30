@@ -75,3 +75,20 @@ def load_alocacao() -> pd.DataFrame:
     df = con.execute("SELECT * FROM alocacao").df()
     con.close()
     return df
+
+
+def list_tables() -> list[str]:
+    con = get_connection()
+    tables = con.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
+    ).fetchall()
+    con.close()
+    return [t[0] for t in tables]
+
+
+def load_table(table_name: str) -> pd.DataFrame:
+    con = get_connection()
+    # Usa aspas duplas para proteger o nome da tabela
+    df = con.execute(f'SELECT * FROM "{table_name}"').df()
+    con.close()
+    return df
